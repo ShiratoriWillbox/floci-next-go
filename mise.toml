@@ -1,0 +1,6 @@
+[tools]
+go = "1.26.3"
+node = "25.9.0"
+
+[env]
+S3_BUCKET = "local-dev"

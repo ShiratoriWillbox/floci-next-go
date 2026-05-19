@@ -1,0 +1,42 @@
+services:
+  database:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: root
+      POSTGRES_DB: db
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U root -d db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  floci:
+    image: floci/floci:1.5.17
+    ports:
+      - "4566:4566"
+    volumes:
+      - ./data:/app/data
+  floci-createbuckets:
+    image: amazon/aws-cli:latest
+    depends_on:
+      - floci
+    environment:
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_DEFAULT_REGION: us-east-1
+      S3_BUCKET: ${S3_BUCKET:-local-dev}
+    volumes:
+      - ./infra/s3-cors.json:/tmp/s3-cors.json:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        until aws s3 ls --endpoint-url http://floci:4566 >/dev/null 2>&1; do sleep 2; done
+        aws s3 mb "s3://${S3_BUCKET}" --endpoint-url http://floci:4566 --region us-east-1 2>/dev/null || true
+        aws s3api put-bucket-cors --bucket "${S3_BUCKET}" --cors-configuration file:///tmp/s3-cors.json --endpoint-url http://floci:4566 --region us-east-1
+volumes:
+  pgdata:
