@@ -31,7 +31,7 @@ services:
       AWS_DEFAULT_REGION: us-east-1
       S3_BUCKET: ${S3_BUCKET:-local-dev}
     volumes:
-      - ./infra/s3-cors.json:/tmp/s3-cors.json:ro
+      - ./infra/s3-cors.json:/tmp/s3-cors.json
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
