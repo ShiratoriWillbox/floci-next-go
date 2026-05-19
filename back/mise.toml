@@ -1,0 +1,30 @@
+# `back/` で作業するときのローカル開発用ツール・環境変数。
+# PostgreSQL: DATABASE_URL または PGHOST / PGUSER / PGPASSWORD / PGDATABASE（docker-compose と揃えるなら下記）。
+
+[tools]
+go = "1.26.3"
+air = "v1.61.7"
+
+[tasks.dev]
+description = "HTTP API（Air でホットリロード）"
+run = "air"
+
+[tasks."debug:db"]
+description = "PostgreSQL 接続と todos 件数の確認"
+run = "go run ./cmd/debug/db"
+
+[tasks."debug:s3"]
+description = "S3 接続（HeadBucket）と presign PUT の確認"
+run = "go run ./cmd/debug/s3"
+
+[env]
+BACK_ADDR = ":8080"
+DATABASE_URL = "postgres://root:root@localhost:5432/db?sslmode=disable"
+
+# S3 / S3 互換（internal/storage/s3.go の NewS3Client）。本番では S3_ENDPOINT を外し、実クレデンシャルを使う。
+S3_BUCKET = "local-dev"
+AWS_REGION = "us-east-1"
+AWS_ACCESS_KEY_ID = "test"
+AWS_SECRET_ACCESS_KEY = "test"
+# LocalStack や MinIO 等。未設定なら通常の AWS エンドポイント。docker-compose の floci が 4566 の場合は合わせて変更。
+S3_ENDPOINT = "http://127.0.0.1:4566"
