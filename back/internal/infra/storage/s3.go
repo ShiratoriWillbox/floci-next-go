@@ -8,9 +8,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
-	awss3 "github.com/aws/aws-sdk-go/service/s3"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
 // DefaultPutExpires is the lifetime of generated PUT pre-signed URLs.
@@ -38,19 +38,17 @@ type IS3Client interface {
 	PresignGetObject(ctx context.Context, objectKey string, expires time.Duration) (*PresignedGetRequest, error)
 }
 
-// S3Client wraps the AWS S3 API client (SDK v1) and presigning helpers.
+// S3Client wraps the AWS SDK for Go v2 S3 client and presigning helpers.
 type S3Client struct {
-	api    *awss3.S3
+	client *s3.Client
 	bucket string
 }
 
 // NewS3Client builds an S3 client from environment variables.
 //
 // Required: AWS_REGION (or AWS_DEFAULT_REGION), S3_BUCKET
-// Optional: S3_ENDPOINT — base URL for S3-compatible APIs (e.g. LocalStack). Path-style addressing is used when set.
+// Optional: S3_ENDPOINT — base URL for S3-compatible APIs (e.g. LocalStack, Floci). Path-style is used when set.
 func NewS3Client(ctx context.Context) (*S3Client, error) {
-	_ = ctx // session init is synchronous; callers pass context for API calls
-
 	bucket := os.Getenv("S3_BUCKET")
 	if bucket == "" {
 		return nil, fmt.Errorf("S3_BUCKET is required")
@@ -66,21 +64,23 @@ func NewS3Client(ctx context.Context) (*S3Client, error) {
 
 	endpoint := os.Getenv("S3_ENDPOINT")
 
-	awsCfg := &aws.Config{
-		Region: aws.String(region),
-	}
-	if endpoint != "" {
-		awsCfg.Endpoint = aws.String(endpoint)
-		awsCfg.S3ForcePathStyle = aws.Bool(true)
-	}
-
-	sess, err := session.NewSession(awsCfg)
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	if err != nil {
 		return nil, err
 	}
 
+	var client *s3.Client
+	if endpoint != "" {
+		client = s3.NewFromConfig(cfg, func(o *s3.Options) {
+			o.BaseEndpoint = aws.String(endpoint)
+			o.UsePathStyle = true
+		})
+	} else {
+		client = s3.NewFromConfig(cfg)
+	}
+
 	return &S3Client{
-		api:    awss3.New(sess),
+		client: client,
 		bucket: bucket,
 	}, nil
 }
@@ -88,8 +88,8 @@ func NewS3Client(ctx context.Context) (*S3Client, error) {
 var _ IS3Client = (*S3Client)(nil)
 
 // API returns the underlying S3 service client (HeadBucket, PutObject, etc.).
-func (c *S3Client) API() *awss3.S3 {
-	return c.api
+func (c *S3Client) API() *s3.Client {
+	return c.client
 }
 
 // Bucket returns the configured default bucket name.
@@ -99,42 +99,38 @@ func (c *S3Client) Bucket() string {
 
 // PresignPutObject generates a presigned HTTP PUT URL and signing headers for the default bucket.
 func (c *S3Client) PresignPutObject(ctx context.Context, objectKey string, expires time.Duration) (*PresignedPutRequest, error) {
-	req, _ := c.api.PutObjectRequest(&awss3.PutObjectInput{
+	presign := s3.NewPresignClient(c.client)
+	out, err := presign.PresignPutObject(ctx, &s3.PutObjectInput{
 		Bucket:  aws.String(c.bucket),
 		Key:     aws.String(objectKey),
 		Tagging: aws.String("tag=test"),
-	})
-	req.SetContext(ctx)
-
-	urlStr, hdr, err := req.PresignRequest(expires)
+	}, s3.WithPresignExpires(expires))
 	if err != nil {
 		return nil, err
 	}
 
 	return &PresignedPutRequest{
-		URL:          urlStr,
-		Method:       "PUT",
-		SignedHeader: hdr,
+		URL:          out.URL,
+		Method:       out.Method,
+		SignedHeader: out.SignedHeader,
 	}, nil
 }
 
 // PresignGetObject generates a pre-signed HTTP GET URL for the default bucket.
 func (c *S3Client) PresignGetObject(ctx context.Context, objectKey string, expires time.Duration) (*PresignedGetRequest, error) {
-	req, _ := c.api.GetObjectRequest(&awss3.GetObjectInput{
+	presign := s3.NewPresignClient(c.client)
+	out, err := presign.PresignGetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(c.bucket),
 		Key:    aws.String(objectKey),
-	})
-	req.SetContext(ctx)
-
-	urlStr, hdr, err := req.PresignRequest(expires)
+	}, s3.WithPresignExpires(expires))
 	if err != nil {
 		return nil, err
 	}
 
 	return &PresignedGetRequest{
-		URL:          urlStr,
-		Method:       "GET",
-		SignedHeader: hdr,
+		URL:          out.URL,
+		Method:       out.Method,
+		SignedHeader: out.SignedHeader,
 	}, nil
 }
 

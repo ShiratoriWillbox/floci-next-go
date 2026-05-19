@@ -6,8 +6,8 @@ import (
 	"log"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	awss3 "github.com/aws/aws-sdk-go/service/s3"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/floci-next-go/back/internal/infra/storage"
 )
 
@@ -23,7 +23,7 @@ func main() {
 	api := client.API()
 	bucket := client.Bucket()
 
-	_, err = api.HeadBucketWithContext(ctx, &awss3.HeadBucketInput{
+	_, err = api.HeadBucket(ctx, &s3.HeadBucketInput{
 		Bucket: aws.String(bucket),
 	})
 	if err != nil {
